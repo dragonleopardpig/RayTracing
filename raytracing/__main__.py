@@ -110,7 +110,8 @@ elif runExamples:
         "axes.titlesize": "x-large",
         "xtick.labelsize": "x-large",
         "ytick.labelsize": "x-large",
-        "font.family": "helvetica",
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Helvetica", "DejaVu Sans", "Arial", "Liberation Sans"],
     }
     plt.rcParams.update(params)
 

@@ -50,7 +50,7 @@ in
 
     python -m ensurepip --upgrade >/dev/null 2>&1 || true
     python -m pip install --upgrade pip setuptools wheel build >/dev/null
-    python -m pip install --upgrade -e ".[gui]" pillow basedpyright ruff >/dev/null
+    python -m pip install --upgrade -e ".[gui]" pillow basedpyright ruff ipykernel >/dev/null
 
     export PATH="$PWD/$VENV_DIR/bin:$PATH"
   '';
