@@ -1577,9 +1577,9 @@ class Matrix(object):
             halfHeight = self.apertureDiameter/2  # real half height
         return halfHeight
 
-    def display(self):
+    def display(self, returnFigure=False):
         from .figure import GraphicOf
-        return GraphicOf(self).display()
+        return GraphicOf(self).display(returnFigure=returnFigure)
 
     def __str__(self):
         """ String description that allows the use of print(Matrix())

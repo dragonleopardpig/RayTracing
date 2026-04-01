@@ -232,7 +232,7 @@ class MatrixGraphic(Graphic):
         self.points.append(Point((self.matrix.backVertex + F2) / 2, -0.94*h, 'BFL = {0:0.1f}'.format(BFL),
                                  hasMarker=False))
 
-    def display(self):
+    def display(self, returnFigure=False):
         """ Display this component, without any ray tracing but with
         all of its cardinal points and planes.
 
@@ -243,6 +243,7 @@ class MatrixGraphic(Graphic):
         >>> Mat= Matrix(A=1,B=0,C=-1/5,D=1,physicalLength=2,frontVertex=-1,backVertex=2,
         >>>            frontIndex=1.5,backIndex=1,label='Lens')
         >>> Mat.display()
+        >>> fig = Mat.display(returnFigure=True)
 
         And the result is shown in the following figure:
 
@@ -257,7 +258,9 @@ class MatrixGraphic(Graphic):
         """
         fig = self.createFigure()
         fig.display2D(interactive=False)
-        return fig
+        if returnFigure:
+            return fig
+        return None
 
     def createFigure(self) -> 'Figure':
         self.points = []
