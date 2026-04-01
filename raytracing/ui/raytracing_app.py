@@ -1,12 +1,14 @@
 import sys
 
 try:
-    from tkinter import DoubleVar
+    from tkinter import DoubleVar, StringVar
     from tkinter import filedialog
+    import tkinter.ttk as ttk
     from mytk import *
     from mytk.base import BaseNotification
     from mytk.canvasview import *
     from mytk.dataviews import *
+    from mytk.tableview import CellEntry, TableView
     from mytk.vectors import Point, PointDefault, DynamicBasis
     from mytk.labels import Label
     from mytk.notificationcenter import NotificationCenter
@@ -26,6 +28,85 @@ from raytracing import *
 import colorsys
 import pyperclip
 from contextlib import suppress
+
+ELEMENT_DEFAULTS = {
+    "Lens": "f=50, diameter=25.4",
+    "Aperture": "diameter=25.4",
+    "CurvedMirror": "R=100, diameter=25.4",
+    "DielectricInterface": "n1=1.0, n2=1.5, R=100, diameter=25.4",
+    "ThickLens": "n=1.5, R1=100, R2=-100, thickness=10, diameter=25.4",
+    "DielectricSlab": "n=1.5, thickness=10, diameter=25.4",
+    "Axicon": "alpha=2.0, n=1.5, diameter=25.4",
+}
+
+ELEMENT_ALIASES = {
+    "AS": "Aperture",
+    "FS": "Aperture",
+    "Aperture Stop": "Aperture",
+    "Field Stop": "Aperture",
+}
+
+
+class ElementCellEditor(CellEntry):
+    def create_widget(self, master):
+        record = self.tableview.data_source.record(self.item_id)
+
+        self.parent = master
+        self.value_variable = StringVar()
+        self.widget = ttk.Combobox(
+            master,
+            textvariable=self.value_variable,
+            values=list(ELEMENT_DEFAULTS.keys()),
+            state="readonly",
+        )
+        self.widget.bind("<<ComboboxSelected>>", self.event_return_callback)
+        self.widget.bind("<Escape>", self.event_focusout_callback)
+        self.widget.set(str(record[self.column_name]))
+
+    def event_return_callback(self, event):
+        record = dict(self.tableview.data_source.record(self.item_id))
+        new_element = self.value_variable.get()
+        old_element = record.get(self.column_name)
+        record[self.column_name] = new_element
+
+        if new_element != old_element:
+            default_arguments = ELEMENT_DEFAULTS.get(new_element)
+            if default_arguments is not None:
+                record["arguments"] = default_arguments
+
+        self.tableview.item_modified(item_id=self.item_id, modified_record=record)
+        self.event_generate("<FocusOut>")
+
+    def event_focusout_callback(self, event):
+        self.widget.destroy()
+
+
+class ElementTableView(TableView):
+    def focus_edit_cell(self, item_id, column_name):
+        assert isinstance(column_name, str)
+
+        bbox = self.widget.bbox(item_id, column=column_name)
+        if column_name == "element":
+            entry_box = ElementCellEditor(
+                tableview=self,
+                item_id=item_id,
+                column_name=column_name,
+            )
+        else:
+            entry_box = CellEntry(
+                tableview=self,
+                item_id=item_id,
+                column_name=column_name,
+            )
+
+        entry_box.place_into(
+            parent=self,
+            x=bbox[0] - 2,
+            y=bbox[1] - 2,
+            width=bbox[2] + 4,
+            height=bbox[3] + 4,
+        )
+        entry_box.widget.focus()
 
 
 class RaytracingApp(App):
@@ -88,7 +169,7 @@ class RaytracingApp(App):
             self.button_group, row=0, column=3, pady=5, padx=5
         )
 
-        self.tableview = TableView(
+        self.tableview = ElementTableView(
             columns_labels={
                 "element": "Element",
                 "arguments": "Properties",
@@ -369,11 +450,14 @@ class RaytracingApp(App):
 
     def validate_source_data(self, tableview):
         try:
-            user_provided_path = self.get_path_from_ui(
+            self.get_path_from_ui(
                 without_apertures=True, max_position=None
             )
             return False
         except Exception as err:
+            if not hasattr(err, "details") or not isinstance(err.details, dict):
+                return True
+
             mandatory_arguments = [
                 f"{k}=?" for k, v in err.details.items() if v is inspect._empty
             ]
@@ -487,7 +571,7 @@ class RaytracingApp(App):
 
             if self.show_labels:
                 self.create_object_labels(finite_path)
-        except ValueError as err:
+        except Exception:
             pass
 
     def adjust_axes_limits(self, path):
@@ -505,8 +589,10 @@ class RaytracingApp(App):
         raytraces = self.raytraces_to_display(path)
         y_min, y_max = self.raytraces_limits(raytraces)
 
+        x_max = max(float(path.L), 1.0)
+
         self.coords.axes_limits = (
-            (0, path.L),
+            (0, x_max),
             (min(y_min, -half_diameter) * 1.1, max(y_max, half_diameter) * 1.1),
         )
 
@@ -879,7 +965,8 @@ class RaytracingApp(App):
         #     "DielectricSlab":DielectricSlab
         # }
 
-        cls = globals()[class_name]
+        class_name = ELEMENT_ALIASES.get(class_name, class_name)
+        cls = globals().get(class_name)
         # cls = allowed_classes.get(class_name)
         if cls is None:
             raise ValueError(f"Class {class_name} not allowed")
@@ -1073,19 +1160,33 @@ path.display(rays=rays)
             )
 
             axial_ray = imaging_path.axialRay()
-            NA = imaging_path.NA()
-            data_source.append_record(
-                {
-                    "property": "Axial ray θ_max",
-                    "value": f"{axial_ray.theta:.2f} rad / {axial_ray.theta*180/3.1416:.2f}°",
-                }
-            )
-            data_source.append_record(
-                {
-                    "property": "NA",
-                    "value": f"{NA:.1f}",
-                }
-            )
+            if axial_ray is not None:
+                NA = imaging_path.NA()
+                data_source.append_record(
+                    {
+                        "property": "Axial ray θ_max",
+                        "value": f"{axial_ray.theta:.2f} rad / {axial_ray.theta*180/3.1416:.2f}°",
+                    }
+                )
+                data_source.append_record(
+                    {
+                        "property": "NA",
+                        "value": f"{NA:.1f}",
+                    }
+                )
+            else:
+                data_source.append_record(
+                    {
+                        "property": "Axial ray θ_max",
+                        "value": "Inexistent",
+                    }
+                )
+                data_source.append_record(
+                    {
+                        "property": "NA",
+                        "value": "Inexistent",
+                    }
+                )
         else:
             data_source.append_record(
                 {"property": "AS position", "value": f"Inexistent"}
